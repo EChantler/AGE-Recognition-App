@@ -29,31 +29,37 @@ const App: React.FC = () => {
 
   // No external face detector. Using center-crop only.
 
-  // Start camera
-  useEffect(() => {
+  // Start camera on user interaction (required for iOS Safari)
+  const startCamera = async () => {
     let stream: MediaStream | null = null;
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: "user" },
+        },
+        audio: false,
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (videoRef.current) {
+        // iOS Safari requires these to render inline and autoplay
+        videoRef.current.setAttribute("playsinline", "true");
+        videoRef.current.setAttribute("autoplay", "true");
+        videoRef.current.muted = true;
+        videoRef.current.srcObject = stream;
+        // Attempt to play; sometimes needs a second attempt on iOS
+        try {
           await videoRef.current.play();
+        } catch (e) {
+          setTimeout(() => {
+            videoRef.current && videoRef.current.play().catch(() => {});
+          }, 100);
         }
-      } catch (err) {
-        console.error("Error accessing camera", err);
       }
-    })();
-
-    // Cleanup: stop camera when component unmounts
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
+    } catch (err) {
+      console.error("Error accessing camera", err);
+      alert("Could not access camera. Please allow permission and try tapping the Start Camera button.");
+    }
+  };
 
   const handleCapture = async () => {
     if (!videoRef.current || !session) return;
@@ -124,8 +130,17 @@ const App: React.FC = () => {
   return (
     <div style={{ padding: 16 }}>
       <h1>Face / Not Face PoC</h1>
-      <video ref={videoRef} style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{ width: 320, height: 240, backgroundColor: "#ccc" }}
+      />
       <div>
+        <button onClick={startCamera} style={{ marginRight: 8 }}>
+          Start Camera
+        </button>
         <button onClick={handleCapture} disabled={!session}>
           Capture & Classify
         </button>
