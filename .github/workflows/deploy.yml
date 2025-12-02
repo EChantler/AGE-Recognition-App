@@ -24,9 +24,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './app/package-lock.json'
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "./app/package-lock.json"
 
       - name: Install dependencies
         run: cd app && npm ci
@@ -40,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './app/dist'
+          path: "./app/dist"
 
   deploy:
     environment:
