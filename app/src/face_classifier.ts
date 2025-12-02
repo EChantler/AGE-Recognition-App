@@ -5,14 +5,17 @@ let sessionPromise: Promise<InferenceSession> | null = null;
 
 export function loadModel() {
   if (!sessionPromise) {
-    sessionPromise = InferenceSession.create("/models/face_binary.onnx", {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
+    const base = import.meta.env.BASE_URL || "/";
+    const modelUrl = `${base}models/face_binary.onnx`;
+    const dataUrl = `${base}models/face_binary.onnx.data`;
+    sessionPromise = InferenceSession.create(modelUrl, {
+      executionProviders: ["wasm"],
+      graphOptimizationLevel: "all",
       enableCpuMemArena: false,
       enableMemPattern: false,
       externalData: [
         {
-          data: "/models/face_binary.onnx.data",
+          data: dataUrl,
           path: "face_binary.onnx.data",
         },
       ],
