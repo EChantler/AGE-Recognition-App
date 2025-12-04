@@ -5,13 +5,13 @@ import torch
 import os
 
 from face_binary_net import MobilenetBinaryNet
-from simple_face_dataset import SimpleFaceDataset
+from model.datasets import SimpleFaceDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Get the directory where this script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(script_dir, "data")
+data_path = os.path.join(script_dir, "data/faces")
 
 import random
 import torchvision.transforms as T

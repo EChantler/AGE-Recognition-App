@@ -1,0 +1,91 @@
+model/data/
+mlruns
+# Python
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+*.pth
+venv/
+ENV/
+env/
+.venv
+env.bak/
+venv.bak/
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Node/React
+node_modules/
+npm-debug.log
+npm-error.log
+yarn-error.log
+yarn-debug.log
+dist/
+build/
+.next/
+out/
+
+# Vite
+.vite/
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Project specific
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Models and data (optional - uncomment if you want to exclude large files)
+# *.onnx
+# *.pth
+# data/
