@@ -45,7 +45,21 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
 
   const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
   const outputs = await session.run({ input: tensor });
-  const logits = outputs["logits"].data as Float32Array; // [1,2]
+  
+  console.log("Raw outputs keys:", Object.keys(outputs));
+  console.log("Raw outputs:", outputs);
+  
+  // Get output - try both "output" and "logits" names
+  let logits: Float32Array | undefined;
+  if (outputs["output"]) {
+    logits = outputs["output"].data as Float32Array;
+  } else if (outputs["logits"]) {
+    logits = outputs["logits"].data as Float32Array;
+  }
+  
+  if (!logits) {
+    throw new Error(`No output found. Available outputs: ${Object.keys(outputs).join(", ")}`);
+  }
 
   console.log("Raw logits:", logits);
 
