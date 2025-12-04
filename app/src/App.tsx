@@ -129,7 +129,7 @@ const App: React.FC = () => {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1>Face / Not Face PoC 2</h1>
+      <h1>Face / Not Face PoC 3</h1>
       <video ref={videoRef} playsInline muted autoPlay style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
       <div>
         <button onClick={startCamera} style={{ marginRight: 8 }}>
