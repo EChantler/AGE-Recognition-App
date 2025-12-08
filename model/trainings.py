@@ -1,3 +1,4 @@
+from datetime import datetime
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn as nn
@@ -55,7 +56,7 @@ def train_model(model, train_loader, val_loader, model_name, num_epochs=10, lr=1
     mlflow.set_tracking_uri(f"file:{mlflow_dir}")
     mlflow.set_experiment(f"{model_name}_training")
     
-    with mlflow.start_run(run_name=f"{model_name}_run"):
+    with mlflow.start_run(run_name=f"{model_name}_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
         # Log hyperparameters
         mlflow.log_param("model_name", model_name)
         mlflow.log_param("num_epochs", num_epochs)
@@ -128,7 +129,7 @@ def train_model(model, train_loader, val_loader, model_name, num_epochs=10, lr=1
             # Save best model
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                pth_path = os.path.join(script_dir, f"{model_name}.pth")
+                pth_path = os.path.join(script_dir, f"models/{model_name}.pth")
                 torch.save(model.state_dict(), pth_path)
                 print(f"Saved best model to: {pth_path} (Val Acc: {val_acc:.3f})")
         
@@ -138,8 +139,8 @@ def train_model(model, train_loader, val_loader, model_name, num_epochs=10, lr=1
         # Export to ONNX
         model.eval()
         dummy_input = torch.randn(1, 3, 224, 224).to(device)
-        onnx_path = os.path.join(script_dir, f"{model_name}.onnx")
-        onnx_data_path = os.path.join(script_dir, f"{model_name}.onnx.data")
+        onnx_path = os.path.join(script_dir, f"models/{model_name}.onnx")
+        onnx_data_path = os.path.join(script_dir, f"models/{model_name}.onnx.data")
         
         torch.onnx.export(
             model,
@@ -194,7 +195,7 @@ def train_face_binary():
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
     model = MobilenetBinaryNet(pretrained=True)
-    return train_model(model, train_loader, val_loader, "face_binary", num_epochs=3)
+    return train_model(model, train_loader, val_loader, "face_binary", num_epochs=1)
 
 
 def train_age_classifier():
@@ -269,8 +270,8 @@ if __name__ == "__main__":
     print("Starting training for all models...\n")
     
     # Uncomment the models you want to train:
-    train_face_binary()
-    # train_age_classifier()
+    # train_face_binary()
+    train_age_classifier()
     # train_gender_classifier()
     # train_expression_classifier()
     

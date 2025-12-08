@@ -1,5 +1,7 @@
 model/data/
 mlruns
+model\face_binary.onnx
+model\face_binary.onnx.data
 # Python
 *.pyc
 __pycache__/

@@ -1,29 +1,44 @@
 // src/App.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { InferenceSession } from "onnxruntime-web";
-import { loadModel, classifyImage } from "./face_classifier";
+import { loadModel, loadAgeModel, classifyImage, classifyAge } from "./face_classifier";
 import { preprocessImageData } from "./preprocess";
 // Simple center-crop pipeline (face detector reverted)
 
 const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [session, setSession] = useState<InferenceSession | null>(null);
+  const [ageSession, setAgeSession] = useState<InferenceSession | null>(null);
   const [result, setResult] = useState<{
     label: string;
     confidence: number;
     probabilities: { notFace: number; face: number };
   } | null>(null);
+  const [ageResult, setAgeResult] = useState<{
+    label: string;
+    confidence: number;
+    probabilities: { [key: string]: number };
+  } | null>(null);
 
   // Load model once
   useEffect(() => {
-    console.log("Loading ONNX model...");
+    console.log("Loading ONNX models...");
     loadModel()
       .then((loadedSession) => {
-        console.log("Model loaded successfully:", loadedSession);
+        console.log("Face model loaded successfully:", loadedSession);
         setSession(loadedSession);
       })
       .catch((err) => {
-        console.error("Failed to load model:", err);
+        console.error("Failed to load face model:", err);
+      });
+    
+    loadAgeModel()
+      .then((loadedSession) => {
+        console.log("Age model loaded successfully:", loadedSession);
+        setAgeSession(loadedSession);
+      })
+      .catch((err) => {
+        console.error("Failed to load age model:", err);
       });
   }, []);
 
@@ -90,8 +105,17 @@ const App: React.FC = () => {
     const inputData = preprocessImageData(imageData);
     renderPreprocessedToCanvas(inputData, size);
 
+    // Run face detection
     const prediction = await classifyImage(session, inputData);
     setResult(prediction);
+
+    // Run age classification if age model is loaded and face is detected
+    if (ageSession && prediction.label === "Face") {
+      const agePrediction = await classifyAge(ageSession, inputData);
+      setAgeResult(agePrediction);
+    } else {
+      setAgeResult(null);
+    }
   };
 
   function renderPreprocessedToCanvas(inputData: Float32Array, size = 224) {
@@ -129,13 +153,13 @@ const App: React.FC = () => {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1>Face / Not Face PoC 3</h1>
+      <h1>Face Detection & Age Recognition</h1>
       <video ref={videoRef} playsInline muted autoPlay style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
       <div>
         <button onClick={startCamera} style={{ marginRight: 8 }}>
           Start Camera
         </button>
-        <button onClick={handleCapture} disabled={!session}>
+        <button onClick={handleCapture} disabled={!session || !ageSession}>
           Capture & Classify
         </button>
       </div>
@@ -145,13 +169,28 @@ const App: React.FC = () => {
       </div>
       {result && (
         <div style={{ marginTop: 16 }}>
-          <h2>Prediction: {result.label}</h2>
+          <h2>Face Detection: {result.label}</h2>
           <p style={{ fontSize: 18 }}>
             Confidence: <strong>{(result.confidence * 100).toFixed(2)}%</strong>
           </p>
           <div style={{ fontSize: 14, color: "#666" }}>
             <div>Not Face: {(result.probabilities.notFace * 100).toFixed(2)}%</div>
             <div>Face: {(result.probabilities.face * 100).toFixed(2)}%</div>
+          </div>
+        </div>
+      )}
+      {ageResult && (
+        <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
+          <h2>Age Range: {ageResult.label}</h2>
+          <p style={{ fontSize: 18 }}>
+            Confidence: <strong>{(ageResult.confidence * 100).toFixed(2)}%</strong>
+          </p>
+          <div style={{ fontSize: 14, color: "#666" }}>
+            <div>18-20: {(ageResult.probabilities["18-20"] * 100).toFixed(2)}%</div>
+            <div>21-30: {(ageResult.probabilities["21-30"] * 100).toFixed(2)}%</div>
+            <div>31-40: {(ageResult.probabilities["31-40"] * 100).toFixed(2)}%</div>
+            <div>41-50: {(ageResult.probabilities["41-50"] * 100).toFixed(2)}%</div>
+            <div>51-60: {(ageResult.probabilities["51-60"] * 100).toFixed(2)}%</div>
           </div>
         </div>
       )}

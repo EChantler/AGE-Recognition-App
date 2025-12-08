@@ -1,14 +1,15 @@
 // src/faceClassifier.ts
 import { InferenceSession, Tensor } from "onnxruntime-web";
 
-let sessionPromise: Promise<InferenceSession> | null = null;
+let faceSessionPromise: Promise<InferenceSession> | null = null;
+let ageSessionPromise: Promise<InferenceSession> | null = null;
 
 export function loadModel() {
-  if (!sessionPromise) {
+  if (!faceSessionPromise) {
     const base = import.meta.env.BASE_URL || "/";
     const modelUrl = `${base}models/face_binary.onnx`;
     const dataUrl = `${base}models/face_binary.onnx.data`;
-    sessionPromise = InferenceSession.create(modelUrl, {
+    faceSessionPromise = InferenceSession.create(modelUrl, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
       enableCpuMemArena: false,
@@ -21,7 +22,28 @@ export function loadModel() {
       ],
     });
   }
-  return sessionPromise;
+  return faceSessionPromise;
+}
+
+export function loadAgeModel() {
+  if (!ageSessionPromise) {
+    const base = import.meta.env.BASE_URL || "/";
+    const modelUrl = `${base}models/age.onnx`;
+    const dataUrl = `${base}models/age.onnx.data`;
+    ageSessionPromise = InferenceSession.create(modelUrl, {
+      executionProviders: ["wasm"],
+      graphOptimizationLevel: "all",
+      enableCpuMemArena: false,
+      enableMemPattern: false,
+      externalData: [
+        {
+          data: dataUrl,
+          path: "age.onnx.data",
+        },
+      ],
+    });
+  }
+  return ageSessionPromise;
 }
 
 export async function classifyImage(session: InferenceSession, inputData: Float32Array) {
@@ -45,10 +67,10 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
 
   const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
   const outputs = await session.run({ input: tensor });
-  
+
   console.log("Raw outputs keys:", Object.keys(outputs));
   console.log("Raw outputs:", outputs);
-  
+
   // Get output - try both "output" and "logits" names
   let logits: Float32Array | undefined;
   if (outputs["output"]) {
@@ -56,7 +78,7 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
   } else if (outputs["logits"]) {
     logits = outputs["logits"].data as Float32Array;
   }
-  
+
   if (!logits) {
     throw new Error(`No output found. Available outputs: ${Object.keys(outputs).join(", ")}`);
   }
@@ -84,6 +106,49 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
     probabilities: {
       notFace: prob0,
       face: prob1,
+    },
+  };
+}
+
+export async function classifyAge(session: InferenceSession, inputData: Float32Array) {
+  const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
+  const outputs = await session.run({ input: tensor });
+
+  console.log("Age model raw outputs:", outputs);
+
+  // Get output logits
+  let logits: Float32Array | undefined;
+  if (outputs["output"]) {
+    logits = outputs["output"].data as Float32Array;
+  } else if (outputs["logits"]) {
+    logits = outputs["logits"].data as Float32Array;
+  }
+
+  if (!logits || logits.length !== 5) {
+    throw new Error(`Expected 5 age class logits. Got: ${logits?.length || 0}`);
+  }
+
+  console.log("Raw age logits:", Array.from(logits));
+
+  // Apply softmax to get probabilities
+  const expValues = Array.from(logits).map(l => Math.exp(l));
+  const sumExp = expValues.reduce((a, b) => a + b, 0);
+  const probabilities = expValues.map(exp => exp / sumExp);
+
+  // Get prediction (argmax)
+  const predIdx = probabilities.indexOf(Math.max(...probabilities));
+  const ageLabels = ["18-20", "21-30", "31-40", "41-50", "51-60"];
+  const confidence = probabilities[predIdx];
+
+  return {
+    label: ageLabels[predIdx],
+    confidence: confidence,
+    probabilities: {
+      "18-20": probabilities[0],
+      "21-30": probabilities[1],
+      "31-40": probabilities[2],
+      "41-50": probabilities[3],
+      "51-60": probabilities[4],
     },
   };
 }
