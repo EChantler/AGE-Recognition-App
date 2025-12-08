@@ -131,9 +131,9 @@ export async function classifyAge(session: InferenceSession, inputData: Float32A
   console.log("Raw age logits:", Array.from(logits));
 
   // Apply softmax to get probabilities
-  const expValues = Array.from(logits).map(l => Math.exp(l));
+  const expValues = Array.from(logits).map((l) => Math.exp(l));
   const sumExp = expValues.reduce((a, b) => a + b, 0);
-  const probabilities = expValues.map(exp => exp / sumExp);
+  const probabilities = expValues.map((exp) => exp / sumExp);
 
   // Get prediction (argmax)
   const predIdx = probabilities.indexOf(Math.max(...probabilities));

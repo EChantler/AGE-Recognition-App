@@ -31,7 +31,7 @@ const App: React.FC = () => {
       .catch((err) => {
         console.error("Failed to load face model:", err);
       });
-    
+
     loadAgeModel()
       .then((loadedSession) => {
         console.log("Age model loaded successfully:", loadedSession);
