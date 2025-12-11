@@ -1,7 +1,16 @@
 // src/App.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { InferenceSession } from "onnxruntime-web";
-import { loadModel, loadAgeModel, classifyImage, classifyAge } from "./face_classifier";
+import {
+  loadModel,
+  loadAgeModel,
+  loadGenderModel,
+  loadExpressionModel,
+  classifyImage,
+  classifyAge,
+  classifyGender,
+  classifyExpression,
+} from "./face_classifier";
 import { preprocessImageData } from "./preprocess";
 // Simple center-crop pipeline (face detector reverted)
 
@@ -9,12 +18,24 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [session, setSession] = useState<InferenceSession | null>(null);
   const [ageSession, setAgeSession] = useState<InferenceSession | null>(null);
+  const [genderSession, setGenderSession] = useState<InferenceSession | null>(null);
+  const [expressionSession, setExpressionSession] = useState<InferenceSession | null>(null);
   const [result, setResult] = useState<{
     label: string;
     confidence: number;
     probabilities: { notFace: number; face: number };
   } | null>(null);
   const [ageResult, setAgeResult] = useState<{
+    label: string;
+    confidence: number;
+    probabilities: { [key: string]: number };
+  } | null>(null);
+  const [genderResult, setGenderResult] = useState<{
+    label: string;
+    confidence: number;
+    probabilities: { female: number; male: number };
+  } | null>(null);
+  const [expressionResult, setExpressionResult] = useState<{
     label: string;
     confidence: number;
     probabilities: { [key: string]: number };
@@ -39,6 +60,24 @@ const App: React.FC = () => {
       })
       .catch((err) => {
         console.error("Failed to load age model:", err);
+      });
+
+    loadGenderModel()
+      .then((loadedSession) => {
+        console.log("Gender model loaded successfully:", loadedSession);
+        setGenderSession(loadedSession);
+      })
+      .catch((err) => {
+        console.error("Failed to load gender model:", err);
+      });
+
+    loadExpressionModel()
+      .then((loadedSession) => {
+        console.log("Expression model loaded successfully:", loadedSession);
+        setExpressionSession(loadedSession);
+      })
+      .catch((err) => {
+        console.error("Failed to load expression model:", err);
       });
   }, []);
 
@@ -116,6 +155,22 @@ const App: React.FC = () => {
     } else {
       setAgeResult(null);
     }
+
+    // Run gender classification if gender model is loaded and face is detected
+    if (genderSession && prediction.label === "Face") {
+      const genderPrediction = await classifyGender(genderSession, inputData);
+      setGenderResult(genderPrediction);
+    } else {
+      setGenderResult(null);
+    }
+
+    // Run expression classification if expression model is loaded and face is detected
+    if (expressionSession && prediction.label === "Face") {
+      const expressionPrediction = await classifyExpression(expressionSession, inputData);
+      setExpressionResult(expressionPrediction);
+    } else {
+      setExpressionResult(null);
+    }
   };
 
   function renderPreprocessedToCanvas(inputData: Float32Array, size = 224) {
@@ -153,13 +208,13 @@ const App: React.FC = () => {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1>Face Detection & Age Recognition</h1>
+      <h1>Face Detection & Age & Gender & Expression Recognition</h1>
       <video ref={videoRef} playsInline muted autoPlay style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
       <div>
         <button onClick={startCamera} style={{ marginRight: 8 }}>
           Start Camera
         </button>
-        <button onClick={handleCapture} disabled={!session || !ageSession}>
+        <button onClick={handleCapture} disabled={!session || !ageSession || !genderSession || !expressionSession}>
           Capture & Classify
         </button>
       </div>
@@ -181,16 +236,43 @@ const App: React.FC = () => {
       )}
       {ageResult && (
         <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
-          <h2>Age Range: {ageResult.label}</h2>
+          <h2>Age Group: {ageResult.label}</h2>
           <p style={{ fontSize: 18 }}>
             Confidence: <strong>{(ageResult.confidence * 100).toFixed(2)}%</strong>
           </p>
           <div style={{ fontSize: 14, color: "#666" }}>
-            <div>18-20: {(ageResult.probabilities["18-20"] * 100).toFixed(2)}%</div>
-            <div>21-30: {(ageResult.probabilities["21-30"] * 100).toFixed(2)}%</div>
-            <div>31-40: {(ageResult.probabilities["31-40"] * 100).toFixed(2)}%</div>
-            <div>41-50: {(ageResult.probabilities["41-50"] * 100).toFixed(2)}%</div>
-            <div>51-60: {(ageResult.probabilities["51-60"] * 100).toFixed(2)}%</div>
+            <div>Young: {(ageResult.probabilities.YOUNG * 100).toFixed(2)}%</div>
+            <div>Middle: {(ageResult.probabilities.MIDDLE * 100).toFixed(2)}%</div>
+            <div>Old: {(ageResult.probabilities.OLD * 100).toFixed(2)}%</div>
+          </div>
+        </div>
+      )}
+      {genderResult && (
+        <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
+          <h2>Gender: {genderResult.label}</h2>
+          <p style={{ fontSize: 18 }}>
+            Confidence: <strong>{(genderResult.confidence * 100).toFixed(2)}%</strong>
+          </p>
+          <div style={{ fontSize: 14, color: "#666" }}>
+            <div>Female: {(genderResult.probabilities.female * 100).toFixed(2)}%</div>
+            <div>Male: {(genderResult.probabilities.male * 100).toFixed(2)}%</div>
+          </div>
+        </div>
+      )}
+      {expressionResult && (
+        <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
+          <h2>Expression: {expressionResult.label}</h2>
+          <p style={{ fontSize: 18 }}>
+            Confidence: <strong>{(expressionResult.confidence * 100).toFixed(2)}%</strong>
+          </p>
+          <div style={{ fontSize: 14, color: "#666" }}>
+            <div>Angry: {(expressionResult.probabilities.angry * 100).toFixed(2)}%</div>
+            <div>Disgust: {(expressionResult.probabilities.disgust * 100).toFixed(2)}%</div>
+            <div>Fear: {(expressionResult.probabilities.fear * 100).toFixed(2)}%</div>
+            <div>Happy: {(expressionResult.probabilities.happy * 100).toFixed(2)}%</div>
+            <div>Neutral: {(expressionResult.probabilities.neutral * 100).toFixed(2)}%</div>
+            <div>Sad: {(expressionResult.probabilities.sad * 100).toFixed(2)}%</div>
+            <div>Surprise: {(expressionResult.probabilities.surprise * 100).toFixed(2)}%</div>
           </div>
         </div>
       )}

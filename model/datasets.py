@@ -3,15 +3,17 @@ from PIL import Image
 import torchvision.transforms as T
 import torch
 import os
+import random
 
 class SimpleFaceDataset(Dataset):
-    def __init__(self, root_dir=None, samples=None, transform=None):
+    def __init__(self, root_dir=None, samples=None, transform=None, sample_ratio=1.0):
         """
         If root_dir is provided, it will scan for:
           root_dir/face/*.jpg
           root_dir/not_face/*.jpg
         Alternatively, pass an explicit `samples` list of dicts with keys: {path, label}.
         Provide a `transform` to control augmentation (train vs val).
+        sample_ratio: Float between 0 and 1 to sample a fraction of the data (default: 1.0 = use all)
         """
         if samples is not None:
             self.samples = samples
@@ -28,6 +30,11 @@ class SimpleFaceDataset(Dataset):
                                 "label": label_idx,
                             }
                         )
+        
+        # Apply sampling if sample_ratio < 1.0
+        if sample_ratio < 1.0:
+            num_samples = max(1, int(len(self.samples) * sample_ratio))
+            self.samples = random.sample(self.samples, num_samples)
 
         # Default transform (no augmentation). Pass a custom transform for training augmentation.
         self.transform = transform or T.Compose([
@@ -50,31 +57,28 @@ class SimpleFaceDataset(Dataset):
         return img, label
 
 class AgesDataset(Dataset):
-    def __init__(self, root_dir=None, samples=None, transform=None):
+    def __init__(self, root_dir=None, samples=None, transform=None, sample_ratio=1.0):
         """
         Age classification dataset.
         If root_dir is provided, it will scan for subdirectories:
-          root_dir/18-20/*.jpg
-          root_dir/21-30/*.jpg
-          root_dir/31-40/*.jpg
-          root_dir/41-50/*.jpg
-          root_dir/51-60/*.jpg
+          root_dir/YOUNG/*.jpg
+          root_dir/MIDDLE/*.jpg
+          root_dir/OLD/*.jpg
         Alternatively, pass an explicit `samples` list of dicts with keys: {path, label}.
         Provide a `transform` to control augmentation (train vs val).
+        sample_ratio: Float between 0 and 1 to sample a fraction of the data (default: 1.0 = use all)
         """
         if samples is not None:
             self.samples = samples
         else:
             assert root_dir is not None, "Either root_dir or samples must be provided"
             self.samples = []
-            age_ranges = [
-                ("18-20", 0),
-                ("21-30", 1),
-                ("31-40", 2),
-                ("41-50", 3),
-                ("51-60", 4),
+            age_groups = [
+                ("YOUNG", 0),
+                ("MIDDLE", 1),
+                ("OLD", 2),
             ]
-            for label_name, label_idx in age_ranges:
+            for label_name, label_idx in age_groups:
                 folder = os.path.join(root_dir, label_name)
                 if not os.path.exists(folder):
                     continue
@@ -86,6 +90,11 @@ class AgesDataset(Dataset):
                                 "label": label_idx,
                             }
                         )
+        
+        # Apply sampling if sample_ratio < 1.0
+        if sample_ratio < 1.0:
+            num_samples = max(1, int(len(self.samples) * sample_ratio))
+            self.samples = random.sample(self.samples, num_samples)
 
         # Default transform (no augmentation). Pass a custom transform for training augmentation.
         self.transform = transform or T.Compose([
@@ -109,7 +118,7 @@ class AgesDataset(Dataset):
 
 
 class GendersDataset(Dataset):
-    def __init__(self, root_dir=None, samples=None, transform=None):
+    def __init__(self, root_dir=None, samples=None, transform=None, sample_ratio=1.0):
         """
         Gender classification dataset.
         If root_dir is provided, it will scan for subdirectories:
@@ -117,6 +126,7 @@ class GendersDataset(Dataset):
           root_dir/male/*.jpg
         Alternatively, pass an explicit `samples` list of dicts with keys: {path, label}.
         Provide a `transform` to control augmentation (train vs val).
+        sample_ratio: Float between 0 and 1 to sample a fraction of the data (default: 1.0 = use all)
         """
         if samples is not None:
             self.samples = samples
@@ -135,6 +145,11 @@ class GendersDataset(Dataset):
                                 "label": label_idx,
                             }
                         )
+        
+        # Apply sampling if sample_ratio < 1.0
+        if sample_ratio < 1.0:
+            num_samples = max(1, int(len(self.samples) * sample_ratio))
+            self.samples = random.sample(self.samples, num_samples)
 
         # Default transform (no augmentation). Pass a custom transform for training augmentation.
         self.transform = transform or T.Compose([
@@ -158,7 +173,7 @@ class GendersDataset(Dataset):
 
 
 class ExpressionsDataset(Dataset):
-    def __init__(self, root_dir=None, samples=None, transform=None):
+    def __init__(self, root_dir=None, samples=None, transform=None, sample_ratio=1.0):
         """
         Facial expression classification dataset.
         If root_dir is provided, it will scan for subdirectories:
@@ -171,6 +186,7 @@ class ExpressionsDataset(Dataset):
           root_dir/surprise/*.jpg
         Alternatively, pass an explicit `samples` list of dicts with keys: {path, label}.
         Provide a `transform` to control augmentation (train vs val).
+        sample_ratio: Float between 0 and 1 to sample a fraction of the data (default: 1.0 = use all)
         """
         if samples is not None:
             self.samples = samples
@@ -198,6 +214,11 @@ class ExpressionsDataset(Dataset):
                                 "label": label_idx,
                             }
                         )
+        
+        # Apply sampling if sample_ratio < 1.0
+        if sample_ratio < 1.0:
+            num_samples = max(1, int(len(self.samples) * sample_ratio))
+            self.samples = random.sample(self.samples, num_samples)
 
         # Default transform (no augmentation). Pass a custom transform for training augmentation.
         self.transform = transform or T.Compose([

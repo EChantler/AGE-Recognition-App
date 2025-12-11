@@ -13,6 +13,7 @@ from face_binary_net import MobilenetBinaryNet, MobilenetAgeNet, MobilenetGender
 from datasets import SimpleFaceDataset, AgesDataset, GendersDataset, ExpressionsDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 # Get the directory where this script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -176,7 +177,7 @@ def train_face_binary():
     data_path = os.path.join(script_dir, "data/faces")
     
     # Build and split dataset
-    tmp_dataset = SimpleFaceDataset(data_path)
+    tmp_dataset = SimpleFaceDataset(data_path, sample_ratio=0.2)
     all_samples = tmp_dataset.samples
     random.seed(42)
     random.shuffle(all_samples)
@@ -199,18 +200,18 @@ def train_face_binary():
 
 
 def train_age_classifier():
-    """Train age range classifier"""
+    """Train age group classifier (YOUNG, MIDDLE, OLD)"""
     print("\n" + "="*50)
     print("Training Age Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/ages/train")
-    test_path = os.path.join(script_dir, "data/ages/test")
+    train_path = os.path.join(script_dir, "data/ages2/train")
+    test_path = os.path.join(script_dir, "data/ages2/test")
     
     train_transform, val_transform = get_transforms()
     
-    train_dataset = AgesDataset(root_dir=train_path, transform=train_transform)
-    val_dataset = AgesDataset(root_dir=test_path, transform=val_transform)
+    train_dataset = AgesDataset(root_dir=train_path, transform=train_transform, sample_ratio=1)
+    val_dataset = AgesDataset(root_dir=test_path, transform=val_transform, sample_ratio=1)
     
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
@@ -225,13 +226,13 @@ def train_gender_classifier():
     print("Training Gender Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/gender/Training")
-    val_path = os.path.join(script_dir, "data/gender/Validation")
+    train_path = os.path.join(script_dir, "data/gender/train")
+    val_path = os.path.join(script_dir, "data/gender/test")
     
     train_transform, val_transform = get_transforms()
     
-    train_dataset = GendersDataset(root_dir=train_path, transform=train_transform)
-    val_dataset = GendersDataset(root_dir=val_path, transform=val_transform)
+    train_dataset = GendersDataset(root_dir=train_path, transform=train_transform, sample_ratio=1)
+    val_dataset = GendersDataset(root_dir=val_path, transform=val_transform, sample_ratio=1)
     
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
@@ -247,12 +248,12 @@ def train_expression_classifier():
     print("="*50)
     
     train_path = os.path.join(script_dir, "data/expressions/train")
-    val_path = os.path.join(script_dir, "data/expressions/validation")
+    val_path = os.path.join(script_dir, "data/expressions/test")
     
     train_transform, val_transform = get_transforms()
     
-    train_dataset = ExpressionsDataset(root_dir=train_path, transform=train_transform)
-    val_dataset = ExpressionsDataset(root_dir=val_path, transform=val_transform)
+    train_dataset = ExpressionsDataset(root_dir=train_path, transform=train_transform, sample_ratio=1)
+    val_dataset = ExpressionsDataset(root_dir=val_path, transform=val_transform, sample_ratio=1)
     
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)

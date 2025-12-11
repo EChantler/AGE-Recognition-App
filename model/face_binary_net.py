@@ -23,8 +23,8 @@ class MobilenetAgeNet(nn.Module):
             weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None
         )
         in_features = self.backbone.classifier[-1].in_features
-        # Replace classifier head with 5-class output (5 age ranges)
-        self.backbone.classifier[-1] = nn.Linear(in_features, 5)
+        # Replace classifier head with 3-class output (3 age ranges)
+        self.backbone.classifier[-1] = nn.Linear(in_features, 3)
 
     def forward(self, x):
         return self.backbone(x)
