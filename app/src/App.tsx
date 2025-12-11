@@ -11,8 +11,7 @@ import {
   classifyGender,
   classifyExpression,
 } from "./face_classifier";
-import { preprocessImageData } from "./preprocess";
-// Simple center-crop pipeline (face detector reverted)
+import { preprocessImageData, initializeFaceDetector, extractFaceFrame } from "./preprocess";
 
 const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -119,56 +118,60 @@ const App: React.FC = () => {
     if (!videoRef.current || !session) return;
 
     const size = 224;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
-    // Center crop (80% of frame) to focus on face region
-    const srcW = videoRef.current.videoWidth || 320;
-    const srcH = videoRef.current.videoHeight || 240;
-    const cropScale = 0.8;
-    const cropW = Math.floor(srcW * cropScale);
-    const cropH = Math.floor(srcH * cropScale);
-    const cropX = Math.floor((srcW - cropW) / 2);
-    const cropY = Math.floor((srcH - cropH) / 2);
+    try {
+      // Initialize face detector and extract face frame
+      await initializeFaceDetector();
+      const faceData = await extractFaceFrame(videoRef.current, size);
 
-    console.log("Using center crop.");
+      if (!faceData) {
+        console.log("No face detected");
+        setResult(null);
+        setAgeResult(null);
+        setGenderResult(null);
+        setExpressionResult(null);
+        return;
+      }
 
-    // Draw cropped region scaled to 224x224
-    canvas.width = size;
-    canvas.height = size;
-    ctx.drawImage(videoRef.current, cropX, cropY, cropW, cropH, 0, 0, size, size);
-    const imageData = ctx.getImageData(0, 0, size, size);
+      const { imageData } = faceData;
+      console.log("Face detected and extracted using MediaPipe.");
 
-    // Preprocess to NCHW float32 [1,3,224,224], normalized like in Python
-    const inputData = preprocessImageData(imageData);
-    renderPreprocessedToCanvas(inputData, size);
+      // Preprocess to NCHW float32 [1,3,224,224], normalized like in Python
+      const inputData = preprocessImageData(imageData);
+      renderPreprocessedToCanvas(inputData, size);
 
-    // Run face detection
-    const prediction = await classifyImage(session, inputData);
-    setResult(prediction);
+      // Run face detection
+      const prediction = await classifyImage(session, inputData);
+      setResult(prediction);
 
-    // Run age classification if age model is loaded and face is detected
-    if (ageSession && prediction.label === "Face") {
-      const agePrediction = await classifyAge(ageSession, inputData);
-      setAgeResult(agePrediction);
-    } else {
+      // Run age classification if age model is loaded and face is detected
+      if (ageSession && prediction.label === "Face") {
+        const agePrediction = await classifyAge(ageSession, inputData);
+        setAgeResult(agePrediction);
+      } else {
+        setAgeResult(null);
+      }
+
+      // Run gender classification if gender model is loaded and face is detected
+      if (genderSession && prediction.label === "Face") {
+        const genderPrediction = await classifyGender(genderSession, inputData);
+        setGenderResult(genderPrediction);
+      } else {
+        setGenderResult(null);
+      }
+
+      // Run expression classification if expression model is loaded and face is detected
+      if (expressionSession && prediction.label === "Face") {
+        const expressionPrediction = await classifyExpression(expressionSession, inputData);
+        setExpressionResult(expressionPrediction);
+      } else {
+        setExpressionResult(null);
+      }
+    } catch (err) {
+      console.error("Error during face capture or classification:", err);
+      setResult(null);
       setAgeResult(null);
-    }
-
-    // Run gender classification if gender model is loaded and face is detected
-    if (genderSession && prediction.label === "Face") {
-      const genderPrediction = await classifyGender(genderSession, inputData);
-      setGenderResult(genderPrediction);
-    } else {
       setGenderResult(null);
-    }
-
-    // Run expression classification if expression model is loaded and face is detected
-    if (expressionSession && prediction.label === "Face") {
-      const expressionPrediction = await classifyExpression(expressionSession, inputData);
-      setExpressionResult(expressionPrediction);
-    } else {
       setExpressionResult(null);
     }
   };
