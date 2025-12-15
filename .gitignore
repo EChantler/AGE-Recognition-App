@@ -1,7 +1,7 @@
 model/data/
 mlruns
-model\face_binary.onnx
-model\face_binary.onnx.data
+model/samples
+model/preprocessed_images
 # Python
 *.pyc
 __pycache__/
@@ -41,7 +41,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 pytestdebug.log
-*.pth
+
 venv/
 ENV/
 env/
