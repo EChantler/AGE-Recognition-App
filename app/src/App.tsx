@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { InferenceSession } from "onnxruntime-web";
 import {
   loadModel,
@@ -13,12 +13,29 @@ import {
 } from "./face_classifier";
 import { preprocessImageData, initializeFaceDetector, extractFaceFrame } from "./preprocess";
 
+type ModelKey = "face" | "age" | "gender" | "expression" | "mediapipe";
+
+type ModelLoadState = {
+  label: string;
+  status: "idle" | "loading" | "loaded" | "error";
+  progress: number;
+  error?: string;
+};
+
 const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [session, setSession] = useState<InferenceSession | null>(null);
   const [ageSession, setAgeSession] = useState<InferenceSession | null>(null);
   const [genderSession, setGenderSession] = useState<InferenceSession | null>(null);
   const [expressionSession, setExpressionSession] = useState<InferenceSession | null>(null);
+  const [faceDetectorReady, setFaceDetectorReady] = useState(false);
+  const [loadState, setLoadState] = useState<Record<ModelKey, ModelLoadState>>({
+    face: { label: "Face Detector", status: "idle", progress: 0 },
+    age: { label: "Age", status: "idle", progress: 0 },
+    gender: { label: "Gender", status: "idle", progress: 0 },
+    expression: { label: "Expression", status: "idle", progress: 0 },
+    mediapipe: { label: "MediaPipe", status: "idle", progress: 0 },
+  });
   const [result, setResult] = useState<{
     label: string;
     confidence: number;
@@ -40,47 +57,111 @@ const App: React.FC = () => {
     probabilities: { [key: string]: number };
   } | null>(null);
 
-  // Load model once
-  useEffect(() => {
-    console.log("Loading ONNX models...");
-    loadModel()
-      .then((loadedSession) => {
-        console.log("Face model loaded successfully:", loadedSession);
-        setSession(loadedSession);
-      })
-      .catch((err) => {
-        console.error("Failed to load face model:", err);
-      });
-
-    loadAgeModel()
-      .then((loadedSession) => {
-        console.log("Age model loaded successfully:", loadedSession);
-        setAgeSession(loadedSession);
-      })
-      .catch((err) => {
-        console.error("Failed to load age model:", err);
-      });
-
-    loadGenderModel()
-      .then((loadedSession) => {
-        console.log("Gender model loaded successfully:", loadedSession);
-        setGenderSession(loadedSession);
-      })
-      .catch((err) => {
-        console.error("Failed to load gender model:", err);
-      });
-
-    loadExpressionModel()
-      .then((loadedSession) => {
-        console.log("Expression model loaded successfully:", loadedSession);
-        setExpressionSession(loadedSession);
-      })
-      .catch((err) => {
-        console.error("Failed to load expression model:", err);
-      });
+  const updateLoadState = useCallback((key: ModelKey, partial: Partial<ModelLoadState>) => {
+    setLoadState((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...partial },
+    }));
   }, []);
 
-  // No external face detector. Using center-crop only.
+  // Load models once
+  useEffect(() => {
+    console.log("Loading ONNX models and MediaPipe...");
+
+    const startLoad = async () => {
+      updateLoadState("face", { status: "loading", progress: 25 });
+      updateLoadState("age", { status: "loading", progress: 25 });
+      updateLoadState("gender", { status: "loading", progress: 25 });
+      updateLoadState("expression", { status: "loading", progress: 25 });
+      updateLoadState("mediapipe", { status: "loading", progress: 25 });
+
+      const facePromise = (async () => {
+        try {
+          const loadedSession = await loadModel();
+          console.log("Face model loaded successfully:", loadedSession);
+          setSession(loadedSession);
+          updateLoadState("face", { status: "loaded", progress: 100 });
+        } catch (err) {
+          console.error("Failed to load face model:", err);
+          updateLoadState("face", {
+            status: "error",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
+      const agePromise = (async () => {
+        try {
+          const loadedSession = await loadAgeModel();
+          console.log("Age model loaded successfully:", loadedSession);
+          setAgeSession(loadedSession);
+          updateLoadState("age", { status: "loaded", progress: 100 });
+        } catch (err) {
+          console.error("Failed to load age model:", err);
+          updateLoadState("age", {
+            status: "error",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
+      const genderPromise = (async () => {
+        try {
+          const loadedSession = await loadGenderModel();
+          console.log("Gender model loaded successfully:", loadedSession);
+          setGenderSession(loadedSession);
+          updateLoadState("gender", { status: "loaded", progress: 100 });
+        } catch (err) {
+          console.error("Failed to load gender model:", err);
+          updateLoadState("gender", {
+            status: "error",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
+      const expressionPromise = (async () => {
+        try {
+          const loadedSession = await loadExpressionModel();
+          console.log("Expression model loaded successfully:", loadedSession);
+          setExpressionSession(loadedSession);
+          updateLoadState("expression", { status: "loaded", progress: 100 });
+        } catch (err) {
+          console.error("Failed to load expression model:", err);
+          updateLoadState("expression", {
+            status: "error",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
+      const mediapipePromise = (async () => {
+        try {
+          const detector = await initializeFaceDetector();
+          console.log("MediaPipe face detector ready:", detector);
+          setFaceDetectorReady(true);
+          updateLoadState("mediapipe", { status: "loaded", progress: 100 });
+        } catch (err) {
+          console.error("Failed to load MediaPipe face detector:", err);
+          updateLoadState("mediapipe", {
+            status: "error",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
+      await Promise.all([facePromise, agePromise, genderPromise, expressionPromise, mediapipePromise]);
+    };
+
+    startLoad();
+  }, []);
+
+  // MediaPipe face detector is preloaded at startup for quicker captures.
 
   // Start camera on user interaction (required for iOS Safari)
   const startCamera = async () => {
@@ -115,7 +196,7 @@ const App: React.FC = () => {
   };
 
   const handleCapture = async () => {
-    if (!videoRef.current || !session) return;
+    if (!videoRef.current || !session || !faceDetectorReady) return;
 
     const size = 224;
 
@@ -212,12 +293,47 @@ const App: React.FC = () => {
   return (
     <div style={{ padding: 16 }}>
       <h1>Face Detection & Age & Gender & Expression Recognition</h1>
+      <div style={{ marginBottom: 16, width: "100%", maxWidth: 480 }}>
+        {Object.entries(loadState).map(([key, info]) => {
+          const color = info.status === "loaded" ? "#16a34a" : info.status === "error" ? "#dc2626" : "#f59e0b";
+          return (
+            <div key={key} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginBottom: 4 }}>
+                <span>{info.label} Model</span>
+                <span style={{ color }}>
+                  {info.status === "loading"
+                    ? "Loading"
+                    : info.status === "loaded"
+                    ? "Ready"
+                    : info.status === "error"
+                    ? "Error"
+                    : "Idle"}
+                </span>
+              </div>
+              <div style={{ background: "#e5e7eb", borderRadius: 6, height: 10, overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${info.progress}%`,
+                    height: "100%",
+                    background: color,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
+              {info.error && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 4 }}>Error: {info.error}</div>}
+            </div>
+          );
+        })}
+      </div>
       <video ref={videoRef} playsInline muted autoPlay style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
       <div>
         <button onClick={startCamera} style={{ marginRight: 8 }}>
           Start Camera
         </button>
-        <button onClick={handleCapture} disabled={!session || !ageSession || !genderSession || !expressionSession}>
+        <button
+          onClick={handleCapture}
+          disabled={!session || !ageSession || !genderSession || !expressionSession || !faceDetectorReady}
+        >
           Capture & Classify
         </button>
       </div>
