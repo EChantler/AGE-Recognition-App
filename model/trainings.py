@@ -9,7 +9,7 @@ import mlflow.pytorch
 import random
 import torchvision.transforms as T
 
-from face_binary_net import MobilenetBinaryNet, MobilenetAgeNet, MobilenetGenderNet, MobilenetExpressionNet
+from face_binary_net import EfficientNetExpressionNet, EfficientNetGenderNet, MobilenetBinaryNet, MobilenetAgeNet, MobilenetGenderNet, MobilenetExpressionNet
 from datasets import SimpleFaceDataset, AgesDataset, GendersDataset, ExpressionsDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,7 +41,7 @@ def get_transforms():
     return train_transform, val_transform
 
 
-def train_model(model, train_loader, val_loader, model_name, num_epochs=10, lr=1e-4):
+def train_model(model, optimizer, criterion, train_loader, val_loader, model_name, num_epochs=10, lr=1e-4):
     """
     Generic training function with MLflow tracking
     
@@ -66,8 +66,6 @@ def train_model(model, train_loader, val_loader, model_name, num_epochs=10, lr=1
         mlflow.log_param("device", str(device))
         
         model = model.to(device)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-        criterion = nn.CrossEntropyLoss()
         
         best_val_acc = 0.0
         
@@ -205,8 +203,8 @@ def train_age_classifier():
     print("Training Age Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/ages2/train")
-    test_path = os.path.join(script_dir, "data/ages2/test")
+    train_path = os.path.join(script_dir, "data/ages2_preprocessed/train")
+    test_path = os.path.join(script_dir, "data/ages2_preprocessed/test")
     
     train_transform, val_transform = get_transforms()
     
@@ -217,7 +215,9 @@ def train_age_classifier():
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
     model = MobilenetAgeNet(pretrained=True)
-    return train_model(model, train_loader, val_loader, "age", num_epochs=15)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    criterion = nn.CrossEntropyLoss()
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "age", num_epochs=15)
 
 
 def train_gender_classifier():
@@ -226,8 +226,8 @@ def train_gender_classifier():
     print("Training Gender Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/gender/train")
-    val_path = os.path.join(script_dir, "data/gender/test")
+    train_path = os.path.join(script_dir, "data/gender_preprocessed/train")
+    val_path = os.path.join(script_dir, "data/gender_preprocessed/test")
     
     train_transform, val_transform = get_transforms()
     
@@ -237,8 +237,11 @@ def train_gender_classifier():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
-    model = MobilenetGenderNet(pretrained=True)
-    return train_model(model, train_loader, val_loader, "gender", num_epochs=10)
+    # model = MobilenetGenderNet(pretrained=True)
+    model = EfficientNetGenderNet(pretrained=True)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    criterion = nn.CrossEntropyLoss()
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "gender_efficient_net", num_epochs=5)
 
 
 def train_expression_classifier():
@@ -247,8 +250,8 @@ def train_expression_classifier():
     print("Training Expression Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/expressions/train")
-    val_path = os.path.join(script_dir, "data/expressions/test")
+    train_path = os.path.join(script_dir, "data/expressions_preprocessed/train")
+    val_path = os.path.join(script_dir, "data/expressions_preprocessed/test")
     
     train_transform, val_transform = get_transforms()
     
@@ -258,8 +261,21 @@ def train_expression_classifier():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
-    model = MobilenetExpressionNet(pretrained=True)
-    return train_model(model, train_loader, val_loader, "expression", num_epochs=15)
+    # model = MobilenetExpressionNet(pretrained=True)
+    # model = MobilenetExpressionNet(freeze_backbone=False)
+    model = EfficientNetExpressionNet(pretrained=True)
+    for param in model.backbone.features[:5].parameters():
+        param.requires_grad = False
+
+    for param in model.backbone.features[5:].parameters():
+        param.requires_grad = True
+
+    optimizer = optim.Adam([
+        {"params": model.backbone.features[5:].parameters(), "lr": 5e-5},
+        {"params": model.backbone.classifier.parameters(), "lr": 3e-4}
+    ])
+    criterion = nn.CrossEntropyLoss()
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "expression_efficient_net", num_epochs=20)
 
 
 if __name__ == "__main__":
@@ -272,8 +288,8 @@ if __name__ == "__main__":
     
     # Uncomment the models you want to train:
     # train_face_binary()
-    train_age_classifier()
-    # train_gender_classifier()
+    # train_age_classifier()
+    train_gender_classifier()
     # train_expression_classifier()
     
     print("\n" + "="*50)

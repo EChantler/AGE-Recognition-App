@@ -5,13 +5,15 @@ import {
   loadAgeModel,
   loadGenderModel,
   loadExpressionModel,
+  loadExpressionEfficientModel,
   classifyAge,
   classifyGender,
   classifyExpression,
+  classifyExpressionEfficient,
 } from "./face_classifier";
 import { preprocessImageData, initializeFaceDetector, extractFaceFrame } from "./preprocess";
 
-type ModelKey = "age" | "gender" | "expression" | "mediapipe";
+type ModelKey = "age" | "gender" | "expression" | "expressionEfficient" | "mediapipe";
 
 type ModelLoadState = {
   label: string;
@@ -25,11 +27,13 @@ const App: React.FC = () => {
   const [ageSession, setAgeSession] = useState<InferenceSession | null>(null);
   const [genderSession, setGenderSession] = useState<InferenceSession | null>(null);
   const [expressionSession, setExpressionSession] = useState<InferenceSession | null>(null);
+  const [expressionEfficientSession, setExpressionEfficientSession] = useState<InferenceSession | null>(null);
   const [faceDetectorReady, setFaceDetectorReady] = useState(false);
   const [loadState, setLoadState] = useState<Record<ModelKey, ModelLoadState>>({
     age: { label: "Age", status: "idle" },
     gender: { label: "Gender", status: "idle" },
     expression: { label: "Expression", status: "idle" },
+    expressionEfficient: { label: "Expression (EffNet)", status: "idle" },
     mediapipe: { label: "MediaPipe", status: "idle" },
   });
   const [ageResult, setAgeResult] = useState<{
@@ -45,6 +49,12 @@ const App: React.FC = () => {
     duration: number;
   } | null>(null);
   const [expressionResult, setExpressionResult] = useState<{
+    label: string;
+    confidence: number;
+    probabilities: { [key: string]: number };
+    duration: number;
+  } | null>(null);
+  const [expressionEfficientResult, setExpressionEfficientResult] = useState<{
     label: string;
     confidence: number;
     probabilities: { [key: string]: number };
@@ -67,6 +77,7 @@ const App: React.FC = () => {
       updateLoadState("age", { status: "loading" });
       updateLoadState("gender", { status: "loading" });
       updateLoadState("expression", { status: "loading" });
+      updateLoadState("expressionEfficient", { status: "loading" });
       updateLoadState("mediapipe", { status: "loading" });
 
       const agePromise = (async () => {
@@ -114,6 +125,21 @@ const App: React.FC = () => {
         }
       })();
 
+      const expressionEfficientPromise = (async () => {
+        try {
+          const loadedSession = await loadExpressionEfficientModel();
+          console.log("Expression EfficientNet model loaded successfully:", loadedSession);
+          setExpressionEfficientSession(loadedSession);
+          updateLoadState("expressionEfficient", { status: "loaded" });
+        } catch (err) {
+          console.error("Failed to load expression EfficientNet model:", err);
+          updateLoadState("expressionEfficient", {
+            status: "error",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      })();
+
       const mediapipePromise = (async () => {
         try {
           const detector = await initializeFaceDetector();
@@ -129,7 +155,7 @@ const App: React.FC = () => {
         }
       })();
 
-      await Promise.all([agePromise, genderPromise, expressionPromise, mediapipePromise]);
+      await Promise.all([agePromise, genderPromise, expressionPromise, expressionEfficientPromise, mediapipePromise]);
     };
 
     startLoad();
@@ -185,6 +211,7 @@ const App: React.FC = () => {
         setAgeResult(null);
         setGenderResult(null);
         setExpressionResult(null);
+        setExpressionEfficientResult(null);
         return;
       }
 
@@ -224,6 +251,14 @@ const App: React.FC = () => {
         setExpressionResult(null);
       }
 
+      // Run EfficientNet expression classification if loaded
+      if (expressionEfficientSession) {
+        const expressionEfficientPrediction = await classifyExpressionEfficient(expressionEfficientSession, inputData);
+        setExpressionEfficientResult(expressionEfficientPrediction);
+      } else {
+        setExpressionEfficientResult(null);
+      }
+
       // Scroll to results after successful classification
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -234,6 +269,7 @@ const App: React.FC = () => {
       setAgeResult(null);
       setGenderResult(null);
       setExpressionResult(null);
+      setExpressionEfficientResult(null);
     }
   };
 
@@ -321,6 +357,23 @@ const App: React.FC = () => {
           );
         })}
       </div>
+      <div
+        role="note"
+        aria-label="privacy disclaimer"
+        style={{
+          marginBottom: 16,
+          padding: 12,
+          backgroundColor: "#eef2ff",
+          border: "1px solid #6366f1",
+          borderRadius: 6,
+          color: "#1f2937",
+          fontSize: 13,
+          lineHeight: 1.4,
+        }}
+      >
+        <strong style={{ color: "#3730a3" }}>Disclaimer:</strong> This is an Edge AI project. Images and video are not
+        saved or uploaded; all processing happens on-device in your browser.
+      </div>
       <style>
         {`
           @keyframes spin {
@@ -336,7 +389,9 @@ const App: React.FC = () => {
         </button>
         <button
           onClick={handleCapture}
-          disabled={!ageSession || !genderSession || !expressionSession || !faceDetectorReady}
+          disabled={
+            !ageSession || !genderSession || !expressionSession || !expressionEfficientSession || !faceDetectorReady
+          }
         >
           Capture & Classify
         </button>
@@ -407,6 +462,26 @@ const App: React.FC = () => {
               <div>Neutral: {(expressionResult.probabilities.neutral * 100).toFixed(2)}%</div>
               <div>Sad: {(expressionResult.probabilities.sad * 100).toFixed(2)}%</div>
               <div>Surprise: {(expressionResult.probabilities.surprise * 100).toFixed(2)}%</div>
+            </div>
+          </div>
+        )}
+        {expressionEfficientResult && (
+          <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
+            <h2>Expression (EffNet): {expressionEfficientResult.label}</h2>
+            <p style={{ fontSize: 18 }}>
+              Confidence: <strong>{(expressionEfficientResult.confidence * 100).toFixed(2)}%</strong>
+            </p>
+            <p style={{ fontSize: 14, color: "#0066cc" }}>
+              Inference time: <strong>{expressionEfficientResult.duration.toFixed(2)} ms</strong>
+            </p>
+            <div style={{ fontSize: 14, color: "#666" }}>
+              <div>Angry: {(expressionEfficientResult.probabilities.angry * 100).toFixed(2)}%</div>
+              <div>Disgust: {(expressionEfficientResult.probabilities.disgust * 100).toFixed(2)}%</div>
+              <div>Fear: {(expressionEfficientResult.probabilities.fear * 100).toFixed(2)}%</div>
+              <div>Happy: {(expressionEfficientResult.probabilities.happy * 100).toFixed(2)}%</div>
+              <div>Neutral: {(expressionEfficientResult.probabilities.neutral * 100).toFixed(2)}%</div>
+              <div>Sad: {(expressionEfficientResult.probabilities.sad * 100).toFixed(2)}%</div>
+              <div>Surprise: {(expressionEfficientResult.probabilities.surprise * 100).toFixed(2)}%</div>
             </div>
           </div>
         )}

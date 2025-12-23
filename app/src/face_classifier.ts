@@ -10,6 +10,7 @@ let faceSessionPromise: Promise<InferenceSession> | null = null;
 let ageSessionPromise: Promise<InferenceSession> | null = null;
 let genderSessionPromise: Promise<InferenceSession> | null = null;
 let expressionSessionPromise: Promise<InferenceSession> | null = null;
+let expressionEfficientSessionPromise: Promise<InferenceSession> | null = null;
 
 export function loadModel() {
   if (!faceSessionPromise) {
@@ -93,6 +94,27 @@ export function loadExpressionModel() {
     });
   }
   return expressionSessionPromise;
+}
+
+export function loadExpressionEfficientModel() {
+  if (!expressionEfficientSessionPromise) {
+    const base = import.meta.env.BASE_URL || "/";
+    const modelUrl = `${base}models/expression_efficient_net.onnx`;
+    const dataUrl = `${base}models/expression_efficient_net.onnx.data`;
+    expressionEfficientSessionPromise = InferenceSession.create(modelUrl, {
+      executionProviders: ["wasm"],
+      graphOptimizationLevel: "all",
+      enableCpuMemArena: false,
+      enableMemPattern: false,
+      externalData: [
+        {
+          data: dataUrl,
+          path: "expression_efficient_net.onnx.data",
+        },
+      ],
+    });
+  }
+  return expressionEfficientSessionPromise;
 }
 
 export async function classifyImage(session: InferenceSession, inputData: Float32Array) {
@@ -307,4 +329,9 @@ export async function classifyExpression(session: InferenceSession, inputData: F
     },
     duration,
   };
+}
+
+export async function classifyExpressionEfficient(session: InferenceSession, inputData: Float32Array) {
+  // Same output structure as classifyExpression but uses the EfficientNet-based model.
+  return classifyExpression(session, inputData);
 }
