@@ -1,5 +1,10 @@
 // src/faceClassifier.ts
+import * as ort from "onnxruntime-web";
 import { InferenceSession, Tensor } from "onnxruntime-web";
+
+// Configure ONNX Runtime for CPU-only inference
+ort.env.wasm.simd = true; // enable SIMD for better CPU performance
+ort.env.wasm.numThreads = 1; // control threading (adjust as needed)
 
 let faceSessionPromise: Promise<InferenceSession> | null = null;
 let ageSessionPromise: Promise<InferenceSession> | null = null;
@@ -92,6 +97,8 @@ export function loadExpressionModel() {
 
 export async function classifyImage(session: InferenceSession, inputData: Float32Array) {
   // [1,3,224,224]
+  const startTime = performance.now();
+
   let min = inputData[0],
     max = inputData[0],
     sum = 0;
@@ -144,6 +151,9 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
   const labels = ["Not Face", "Face"];
   const confidence = Math.max(prob0, prob1);
 
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
   return {
     label: labels[predIdx],
     confidence: confidence,
@@ -151,10 +161,13 @@ export async function classifyImage(session: InferenceSession, inputData: Float3
       notFace: prob0,
       face: prob1,
     },
+    duration,
   };
 }
 
 export async function classifyAge(session: InferenceSession, inputData: Float32Array) {
+  const startTime = performance.now();
+
   const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
   const outputs = await session.run({ input: tensor });
 
@@ -184,6 +197,9 @@ export async function classifyAge(session: InferenceSession, inputData: Float32A
   const ageLabels = ["Young", "Middle", "Old"];
   const confidence = probabilities[predIdx];
 
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
   return {
     label: ageLabels[predIdx],
     confidence: confidence,
@@ -192,10 +208,13 @@ export async function classifyAge(session: InferenceSession, inputData: Float32A
       MIDDLE: probabilities[1],
       OLD: probabilities[2],
     },
+    duration,
   };
 }
 
 export async function classifyGender(session: InferenceSession, inputData: Float32Array) {
+  const startTime = performance.now();
+
   const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
   const outputs = await session.run({ input: tensor });
 
@@ -225,6 +244,9 @@ export async function classifyGender(session: InferenceSession, inputData: Float
   const genderLabels = ["Female", "Male"];
   const confidence = probabilities[predIdx];
 
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
   return {
     label: genderLabels[predIdx],
     confidence: confidence,
@@ -232,10 +254,13 @@ export async function classifyGender(session: InferenceSession, inputData: Float
       female: probabilities[0],
       male: probabilities[1],
     },
+    duration,
   };
 }
 
 export async function classifyExpression(session: InferenceSession, inputData: Float32Array) {
+  const startTime = performance.now();
+
   const tensor = new Tensor("float32", inputData, [1, 3, 224, 224]);
   const outputs = await session.run({ input: tensor });
 
@@ -265,6 +290,9 @@ export async function classifyExpression(session: InferenceSession, inputData: F
   const expressionLabels = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"];
   const confidence = probabilities[predIdx];
 
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+
   return {
     label: expressionLabels[predIdx],
     confidence: confidence,
@@ -277,5 +305,6 @@ export async function classifyExpression(session: InferenceSession, inputData: F
       sad: probabilities[5],
       surprise: probabilities[6],
     },
+    duration,
   };
 }

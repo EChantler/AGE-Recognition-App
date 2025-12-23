@@ -29,7 +29,11 @@ export async function initializeFaceDetector(): Promise<FaceDetector> {
 export async function extractFaceFrame(
   videoElement: HTMLVideoElement | HTMLCanvasElement,
   targetSize: number = 224
-): Promise<{ imageData: ImageData; bbox: { x: number; y: number; width: number; height: number } | null } | null> {
+): Promise<{
+  imageData: ImageData;
+  bbox: { x: number; y: number; width: number; height: number } | null;
+  multipleFaces: boolean;
+} | null> {
   if (!faceDetector) {
     faceDetector = await initializeFaceDetector();
   }
@@ -44,8 +48,21 @@ export async function extractFaceFrame(
     return null; // No face detected
   }
 
-  // Get the first (largest) detected face
-  const detection = detectionResult.detections[0];
+  // Find the largest face by area
+  let largestDetection = detectionResult.detections[0];
+  let largestArea = (largestDetection.boundingBox?.width ?? 0) * (largestDetection.boundingBox?.height ?? 0);
+
+  for (let i = 1; i < detectionResult.detections.length; i++) {
+    const detection = detectionResult.detections[i];
+    const area = (detection.boundingBox?.width ?? 0) * (detection.boundingBox?.height ?? 0);
+    if (area > largestArea) {
+      largestArea = area;
+      largestDetection = detection;
+    }
+  }
+
+  const multipleFaces = detectionResult.detections.length > 1;
+  const detection = largestDetection;
   const boundingBox = detection.boundingBox;
 
   if (!boundingBox) return null;
@@ -102,7 +119,7 @@ export async function extractFaceFrame(
   );
 
   const imageData = croppedCtx.getImageData(0, 0, targetSize, targetSize);
-  return { imageData, bbox: paddedBbox };
+  return { imageData, bbox: paddedBbox, multipleFaces };
 }
 
 export function preprocessImageData(imageData: ImageData): Float32Array {
