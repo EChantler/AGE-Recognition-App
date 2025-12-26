@@ -158,7 +158,12 @@ const App: React.FC = () => {
         }
       })();
 
-      await Promise.all([agePromise, genderPromise, expressionPromise, /* expressionEfficientPromise, */ mediapipePromise]);
+      await Promise.all([
+        agePromise,
+        genderPromise,
+        expressionPromise,
+        /* expressionEfficientPromise, */ mediapipePromise,
+      ]);
     };
 
     startLoad();
@@ -489,7 +494,10 @@ const App: React.FC = () => {
         <button
           onClick={handleCapture}
           disabled={
-            !ageSession || !genderSession || !expressionSession || /* !expressionEfficientSession || */ !faceDetectorReady
+            !ageSession ||
+            !genderSession ||
+            !expressionSession ||
+            /* !expressionEfficientSession || */ !faceDetectorReady
           }
         >
           Capture & Classify
