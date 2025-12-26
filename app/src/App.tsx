@@ -61,6 +61,9 @@ const App: React.FC = () => {
     duration: number;
   } | null>(null);
   const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const currentStreamRef = useRef<MediaStream | null>(null);
 
   const updateLoadState = useCallback((key: ModelKey, partial: Partial<ModelLoadState>) => {
     setLoadState((prev) => ({
@@ -164,13 +167,42 @@ const App: React.FC = () => {
   // MediaPipe face detector is preloaded at startup for quicker captures.
 
   // Start camera on user interaction (required for iOS Safari)
-  const startCamera = async () => {
+  const stopCurrentStream = () => {
+    const prev = currentStreamRef.current;
+    if (prev) {
+      prev.getTracks().forEach((t) => t.stop());
+    }
+    currentStreamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const refreshVideoDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
+      setVideoDevices(videoInputs);
+      if (!selectedDeviceId && videoInputs.length > 0) {
+        setSelectedDeviceId(videoInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.error("Failed to enumerate devices", err);
+    }
+  };
+
+  const startCamera = async (deviceId?: string) => {
     let stream: MediaStream | null = null;
     try {
+      // Stop any existing stream before switching
+      stopCurrentStream();
+
       const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: "user" },
-        },
+        video: deviceId
+          ? { deviceId: { exact: deviceId } }
+          : {
+              facingMode: { ideal: "user" },
+            },
         audio: false,
       };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -180,6 +212,7 @@ const App: React.FC = () => {
         videoRef.current.setAttribute("autoplay", "true");
         videoRef.current.muted = true;
         videoRef.current.srcObject = stream;
+        currentStreamRef.current = stream;
         // Attempt to play; sometimes needs a second attempt on iOS
         try {
           await videoRef.current.play();
@@ -189,11 +222,31 @@ const App: React.FC = () => {
           }, 100);
         }
       }
+
+      // Refresh device list (labels become available after permission)
+      await refreshVideoDevices();
     } catch (err) {
       console.error("Error accessing camera", err);
       alert("Could not access camera. Please allow permission and try tapping the Start Camera button.");
     }
   };
+
+  useEffect(() => {
+    const onDeviceChange = () => {
+      refreshVideoDevices();
+    };
+    if (navigator.mediaDevices && "addEventListener" in navigator.mediaDevices) {
+      navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
+    }
+    // Initial attempt to populate list (labels may be empty until permission)
+    refreshVideoDevices();
+    return () => {
+      if (navigator.mediaDevices && "removeEventListener" in navigator.mediaDevices) {
+        navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
+      }
+      stopCurrentStream();
+    };
+  }, []);
 
   const handleCapture = async () => {
     if (!videoRef.current || !faceDetectorReady) return;
@@ -408,8 +461,30 @@ const App: React.FC = () => {
       </style>
       <video ref={videoRef} playsInline muted autoPlay style={{ width: 320, height: 240, backgroundColor: "#ccc" }} />
       <div>
-        <button onClick={startCamera} style={{ marginRight: 8 }}>
+        <select
+          value={selectedDeviceId ?? ""}
+          onChange={(e) => setSelectedDeviceId(e.target.value || null)}
+          style={{ marginRight: 8 }}
+        >
+          {videoDevices.length === 0 ? (
+            <option value="">No cameras detected</option>
+          ) : (
+            videoDevices.map((d, idx) => (
+              <option key={d.deviceId || idx} value={d.deviceId}>
+                {d.label || `Camera ${idx + 1}`}
+              </option>
+            ))
+          )}
+        </select>
+        <button onClick={() => startCamera(selectedDeviceId ?? undefined)} style={{ marginRight: 8 }}>
           Start Camera
+        </button>
+        <button
+          onClick={() => startCamera(selectedDeviceId ?? undefined)}
+          disabled={!videoDevices.length}
+          style={{ marginRight: 8 }}
+        >
+          Switch Camera
         </button>
         <button
           onClick={handleCapture}
