@@ -306,6 +306,30 @@ const App: React.FC = () => {
     ctx.putImageData(imgData, 0, 0);
   }
 
+  function downloadCanvasImage() {
+    const debugCanvas = document.getElementById("debug-preprocessed") as HTMLCanvasElement | null;
+    if (!debugCanvas) {
+      console.error("Canvas not found");
+      return;
+    }
+
+    debugCanvas.toBlob((blob) => {
+      if (!blob) {
+        console.error("Failed to create blob from canvas");
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `preprocessed-face-${new Date().getTime()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h1>Face Detection & Age & Gender & Expression Recognition</h1>
@@ -395,6 +419,9 @@ const App: React.FC = () => {
         >
           Capture & Classify
         </button>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <button onClick={downloadCanvasImage}>Download Current Image</button>
       </div>
       <div style={{ marginTop: 16 }}>
         <h3>Preprocessed Input (what the model sees)</h3>
