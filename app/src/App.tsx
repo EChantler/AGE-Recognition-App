@@ -5,15 +5,15 @@ import {
   loadAgeModel,
   loadGenderModel,
   loadExpressionModel,
-  loadExpressionEfficientModel,
+  // loadExpressionEfficientModel,
   classifyAge,
   classifyGender,
   classifyExpression,
-  classifyExpressionEfficient,
+  // classifyExpressionEfficient,
 } from "./face_classifier";
 import { preprocessImageData, initializeFaceDetector, extractFaceFrame } from "./preprocess";
 
-type ModelKey = "age" | "gender" | "expression" | "expressionEfficient" | "mediapipe";
+type ModelKey = "age" | "gender" | "expression" | /* "expressionEfficient" | */ "mediapipe";
 
 type ModelLoadState = {
   label: string;
@@ -27,13 +27,13 @@ const App: React.FC = () => {
   const [ageSession, setAgeSession] = useState<InferenceSession | null>(null);
   const [genderSession, setGenderSession] = useState<InferenceSession | null>(null);
   const [expressionSession, setExpressionSession] = useState<InferenceSession | null>(null);
-  const [expressionEfficientSession, setExpressionEfficientSession] = useState<InferenceSession | null>(null);
+  // const [expressionEfficientSession, setExpressionEfficientSession] = useState<InferenceSession | null>(null);
   const [faceDetectorReady, setFaceDetectorReady] = useState(false);
   const [loadState, setLoadState] = useState<Record<ModelKey, ModelLoadState>>({
     age: { label: "Age", status: "idle" },
     gender: { label: "Gender", status: "idle" },
     expression: { label: "Expression", status: "idle" },
-    expressionEfficient: { label: "Expression (EffNet)", status: "idle" },
+    // expressionEfficient: { label: "Expression (EffNet)", status: "idle" },
     mediapipe: { label: "MediaPipe", status: "idle" },
   });
   const [ageResult, setAgeResult] = useState<{
@@ -54,12 +54,12 @@ const App: React.FC = () => {
     probabilities: { [key: string]: number };
     duration: number;
   } | null>(null);
-  const [expressionEfficientResult, setExpressionEfficientResult] = useState<{
-    label: string;
-    confidence: number;
-    probabilities: { [key: string]: number };
-    duration: number;
-  } | null>(null);
+  // const [expressionEfficientResult, setExpressionEfficientResult] = useState<{
+  //   label: string;
+  //   confidence: number;
+  //   probabilities: { [key: string]: number };
+  //   duration: number;
+  // } | null>(null);
   const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -80,7 +80,7 @@ const App: React.FC = () => {
       updateLoadState("age", { status: "loading" });
       updateLoadState("gender", { status: "loading" });
       updateLoadState("expression", { status: "loading" });
-      updateLoadState("expressionEfficient", { status: "loading" });
+      // updateLoadState("expressionEfficient", { status: "loading" });
       updateLoadState("mediapipe", { status: "loading" });
 
       const agePromise = (async () => {
@@ -128,20 +128,20 @@ const App: React.FC = () => {
         }
       })();
 
-      const expressionEfficientPromise = (async () => {
-        try {
-          const loadedSession = await loadExpressionEfficientModel();
-          console.log("Expression EfficientNet model loaded successfully:", loadedSession);
-          setExpressionEfficientSession(loadedSession);
-          updateLoadState("expressionEfficient", { status: "loaded" });
-        } catch (err) {
-          console.error("Failed to load expression EfficientNet model:", err);
-          updateLoadState("expressionEfficient", {
-            status: "error",
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-        }
-      })();
+      // const expressionEfficientPromise = (async () => {
+      //   try {
+      //     const loadedSession = await loadExpressionEfficientModel();
+      //     console.log("Expression EfficientNet model loaded successfully:", loadedSession);
+      //     setExpressionEfficientSession(loadedSession);
+      //     updateLoadState("expressionEfficient", { status: "loaded" });
+      //   } catch (err) {
+      //     console.error("Failed to load expression EfficientNet model:", err);
+      //     updateLoadState("expressionEfficient", {
+      //       status: "error",
+      //       error: err instanceof Error ? err.message : "Unknown error",
+      //     });
+      //   }
+      // })();
 
       const mediapipePromise = (async () => {
         try {
@@ -158,7 +158,7 @@ const App: React.FC = () => {
         }
       })();
 
-      await Promise.all([agePromise, genderPromise, expressionPromise, expressionEfficientPromise, mediapipePromise]);
+      await Promise.all([agePromise, genderPromise, expressionPromise, /* expressionEfficientPromise, */ mediapipePromise]);
     };
 
     startLoad();
@@ -264,7 +264,7 @@ const App: React.FC = () => {
         setAgeResult(null);
         setGenderResult(null);
         setExpressionResult(null);
-        setExpressionEfficientResult(null);
+        // setExpressionEfficientResult(null);
         return;
       }
 
@@ -305,12 +305,12 @@ const App: React.FC = () => {
       }
 
       // Run EfficientNet expression classification if loaded
-      if (expressionEfficientSession) {
-        const expressionEfficientPrediction = await classifyExpressionEfficient(expressionEfficientSession, inputData);
-        setExpressionEfficientResult(expressionEfficientPrediction);
-      } else {
-        setExpressionEfficientResult(null);
-      }
+      // if (expressionEfficientSession) {
+      //   const expressionEfficientPrediction = await classifyExpressionEfficient(expressionEfficientSession, inputData);
+      //   setExpressionEfficientResult(expressionEfficientPrediction);
+      // } else {
+      //   setExpressionEfficientResult(null);
+      // }
 
       // Scroll to results after successful classification
       setTimeout(() => {
@@ -322,7 +322,7 @@ const App: React.FC = () => {
       setAgeResult(null);
       setGenderResult(null);
       setExpressionResult(null);
-      setExpressionEfficientResult(null);
+      // setExpressionEfficientResult(null);
     }
   };
 
@@ -489,7 +489,7 @@ const App: React.FC = () => {
         <button
           onClick={handleCapture}
           disabled={
-            !ageSession || !genderSession || !expressionSession || !expressionEfficientSession || !faceDetectorReady
+            !ageSession || !genderSession || !expressionSession || /* !expressionEfficientSession || */ !faceDetectorReady
           }
         >
           Capture & Classify
@@ -567,7 +567,7 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-        {expressionEfficientResult && (
+        {/* expressionEfficientResult && (
           <div style={{ marginTop: 16, borderTop: "2px solid #333", paddingTop: 16 }}>
             <h2>Expression (EffNet): {expressionEfficientResult.label}</h2>
             <p style={{ fontSize: 18 }}>
@@ -586,7 +586,7 @@ const App: React.FC = () => {
               <div>Surprise: {(expressionEfficientResult.probabilities.surprise * 100).toFixed(2)}%</div>
             </div>
           </div>
-        )}
+        ) */}
       </div>
     </div>
   );
