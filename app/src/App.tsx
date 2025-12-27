@@ -282,9 +282,6 @@ const App: React.FC = () => {
       }
       console.log("Face detected and extracted using MediaPipe.");
 
-      // Increment capture counter
-      setCaptureCounter((prev) => prev + 1);
-
       // Preprocess to NCHW float32 [1,3,224,224], normalized like in Python
       const inputData = preprocessImageData(imageData);
       renderPreprocessedToCanvas(inputData, size);
@@ -381,10 +378,13 @@ const App: React.FC = () => {
         return;
       }
 
+      // Increment counter when downloading
+      setCaptureCounter((prev) => prev + 1);
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `preprocessed-face-${captureCounter}.png`;
+      link.download = `preprocessed-face-${captureCounter + 1}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
