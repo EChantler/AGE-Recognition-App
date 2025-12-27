@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn as nn
@@ -8,6 +9,9 @@ import mlflow
 import mlflow.pytorch
 import random
 import torchvision.transforms as T
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
 
 from face_binary_net import EfficientNetExpressionNet, EfficientNetGenderNet, MobilenetBinaryNet, MobilenetAgeNet, MobilenetGenderNet, MobilenetExpressionNet
 from datasets import SimpleFaceDataset, AgesDataset, GendersDataset, ExpressionsDataset
@@ -41,7 +45,7 @@ def get_transforms():
     return train_transform, val_transform
 
 
-def train_model(model, optimizer, criterion, train_loader, val_loader, model_name, num_epochs=10, lr=1e-4):
+def train_model(model, optimizer, criterion, train_loader, val_loader, model_name, num_epochs=10, lr=1e-4, use_cpu=False):
     """
     Generic training function with MLflow tracking
     
@@ -52,7 +56,11 @@ def train_model(model, optimizer, criterion, train_loader, val_loader, model_nam
         model_name: Name for saving model files (e.g., 'face_binary', 'age', 'gender', 'expression')
         num_epochs: Number of training epochs
         lr: Learning rate
+        use_cpu: Force CPU training even if GPU is available (default: False)
     """
+    # Determine device based on parameter and availability
+    training_device = torch.device("cpu") if use_cpu else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     # Ensure we're using the correct tracking URI
     mlflow.set_tracking_uri(f"file:{mlflow_dir}")
     mlflow.set_experiment(f"{model_name}_training")
@@ -63,11 +71,16 @@ def train_model(model, optimizer, criterion, train_loader, val_loader, model_nam
         mlflow.log_param("num_epochs", num_epochs)
         mlflow.log_param("learning_rate", lr)
         mlflow.log_param("batch_size", train_loader.batch_size)
-        mlflow.log_param("device", str(device))
+        mlflow.log_param("device", str(training_device))
+        mlflow.log_param("use_cpu", use_cpu)
         
-        model = model.to(device)
+        model = model.to(training_device)
         
         best_val_acc = 0.0
+        best_pth_path = None
+        
+        # Start training time tracking
+        training_start_time = time.time()
         
         for epoch in range(num_epochs):
             # Training phase
@@ -77,8 +90,8 @@ def train_model(model, optimizer, criterion, train_loader, val_loader, model_nam
             total = 0
             
             for images, labels in train_loader:
-                images = images.to(device)
-                labels = labels.to(device)
+                images = images.to(training_device)
+                labels = labels.to(training_device)
                 
                 optimizer.zero_grad()
                 logits = model(images)
@@ -102,8 +115,8 @@ def train_model(model, optimizer, criterion, train_loader, val_loader, model_nam
             
             with torch.no_grad():
                 for images, labels in val_loader:
-                    images = images.to(device)
-                    labels = labels.to(device)
+                    images = images.to(training_device)
+                    labels = labels.to(training_device)
                     logits = model(images)
                     loss = criterion(logits, labels)
                     val_loss_sum += loss.item() * images.size(0)
@@ -131,13 +144,93 @@ def train_model(model, optimizer, criterion, train_loader, val_loader, model_nam
                 pth_path = os.path.join(script_dir, f"models/{model_name}.pth")
                 torch.save(model.state_dict(), pth_path)
                 print(f"Saved best model to: {pth_path} (Val Acc: {val_acc:.3f})")
+                best_pth_path = pth_path
+        
+        # Calculate and log total training time
+        training_end_time = time.time()
+        total_training_time = training_end_time - training_start_time
+        mlflow.log_metric("total_training_time_seconds", total_training_time)
+        mlflow.log_metric("total_training_time_minutes", total_training_time / 60)
+        print(f"\nTotal training time: {total_training_time:.2f} seconds ({total_training_time/60:.2f} minutes)")
+        
+        # Compute and save confusion matrices (use best weights if available)
+        try:
+            model.eval()
+            if best_pth_path and os.path.exists(best_pth_path):
+                state = torch.load(best_pth_path, map_location=training_device)
+                model.load_state_dict(state)
+                print(f"Loaded best weights from {best_pth_path} for confusion matrix evaluation.")
+
+            def _compute_cm(loader):
+                y_true = []
+                y_pred = []
+                num_classes = None
+                with torch.no_grad():
+                    for images, labels in loader:
+                        images = images.to(training_device)
+                        labels = labels.to(training_device)
+                        logits = model(images)
+                        if num_classes is None:
+                            num_classes = logits.shape[1]
+                        preds = logits.argmax(dim=1)
+                        y_true.extend(labels.cpu().numpy().tolist())
+                        y_pred.extend(preds.cpu().numpy().tolist())
+                labels_range = list(range(num_classes if num_classes is not None else max(max(y_true), max(y_pred)) + 1))
+                cm = confusion_matrix(y_true, y_pred, labels=labels_range)
+                return cm, len(labels_range)
+
+            def _get_class_names(name: str, n: int):
+                name = name.lower()
+                if "gender" in name:
+                    return ["female", "male"][:n]
+                if "expression" in name:
+                    return ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"][:n]
+                if "age" in name:
+                    return ["YOUNG", "MIDDLE", "OLD"][:n]
+                if "face" in name:
+                    return ["not_face", "face"][:n]
+                return [str(i) for i in range(n)]
+
+            train_cm, train_classes = _compute_cm(train_loader)
+            val_cm, val_classes = _compute_cm(val_loader)
+            num_classes = max(train_classes, val_classes)
+            class_names = _get_class_names(model_name, num_classes)
+
+            fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+            for ax, cm, title in [(axes[0], train_cm, "Training Confusion Matrix"), (axes[1], val_cm, "Validation Confusion Matrix")]:
+                im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+                ax.set_title(title)
+                tick_marks = np.arange(len(class_names))
+                ax.set_xticks(tick_marks)
+                ax.set_yticks(tick_marks)
+                ax.set_xticklabels(class_names, rotation=45, ha='right')
+                ax.set_yticklabels(class_names)
+                ax.set_ylabel('True label')
+                ax.set_xlabel('Predicted label')
+                thresh = cm.max() / 2.0 if cm.size > 0 else 0
+                for i in range(cm.shape[0]):
+                    for j in range(cm.shape[1]):
+                        ax.text(j, i, format(cm[i, j], 'd'),
+                                ha="center", va="center",
+                                color="white" if cm[i, j] > thresh else "black")
+            fig.tight_layout()
+
+            models_dir = os.path.join(script_dir, "models")
+            os.makedirs(models_dir, exist_ok=True)
+            cm_path = os.path.join(models_dir, f"{model_name}_confusion.png")
+            fig.savefig(cm_path, dpi=150)
+            plt.close(fig)
+            mlflow.log_artifact(cm_path)
+            print(f"Saved combined confusion matrix image to: {cm_path}")
+        except Exception as e:
+            print(f"Warning: Failed to compute confusion matrices: {e}")
         
         # Log best validation accuracy
         mlflow.log_metric("best_val_acc", best_val_acc)
         
         # Export to ONNX
         model.eval()
-        dummy_input = torch.randn(1, 3, 224, 224).to(device)
+        dummy_input = torch.randn(1, 3, 224, 224).to(training_device)
         onnx_path = os.path.join(script_dir, f"models/{model_name}.onnx")
         onnx_data_path = os.path.join(script_dir, f"models/{model_name}.onnx.data")
         
@@ -217,7 +310,7 @@ def train_age_classifier():
     model = MobilenetAgeNet(pretrained=True)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
-    return train_model(model, optimizer, criterion, train_loader, val_loader, "age", num_epochs=15)
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "age", num_epochs=15, use_cpu=True)
 
 
 def train_gender_classifier():
@@ -226,8 +319,8 @@ def train_gender_classifier():
     print("Training Gender Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/gender_preprocessed/train")
-    val_path = os.path.join(script_dir, "data/gender_preprocessed/test")
+    train_path = os.path.join(script_dir, "data/gender2_preprocessed/train")
+    val_path = os.path.join(script_dir, "data/gender2_preprocessed/test")
     
     train_transform, val_transform = get_transforms()
     
@@ -237,11 +330,12 @@ def train_gender_classifier():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
-    # model = MobilenetGenderNet(pretrained=True)
-    model = EfficientNetGenderNet(pretrained=True)
+    model = MobilenetGenderNet(pretrained=True)
+    # model = EfficientNetGenderNet(pretrained=True)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
-    return train_model(model, optimizer, criterion, train_loader, val_loader, "gender_efficient_net", num_epochs=5)
+    # return train_model(model, optimizer, criterion, train_loader, val_loader, "gender_efficient_net", num_epochs=5)
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "gender", num_epochs=5, use_cpu=False)
 
 
 def train_expression_classifier():
@@ -250,8 +344,8 @@ def train_expression_classifier():
     print("Training Expression Classifier")
     print("="*50)
     
-    train_path = os.path.join(script_dir, "data/expressions_preprocessed/train")
-    val_path = os.path.join(script_dir, "data/expressions_preprocessed/test")
+    train_path = os.path.join(script_dir, "data/expressions2_preprocessed/train")
+    val_path = os.path.join(script_dir, "data/expressions2_preprocessed/test")
     
     train_transform, val_transform = get_transforms()
     
@@ -261,9 +355,10 @@ def train_expression_classifier():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
-    # model = MobilenetExpressionNet(pretrained=True)
+    model = MobilenetExpressionNet(pretrained=True)
+    # optimizer = optim.Adam(model.parameters(), lr=3e-4)
     # model = MobilenetExpressionNet(freeze_backbone=False)
-    model = EfficientNetExpressionNet(pretrained=True)
+    # model = EfficientNetExpressionNet(pretrained=True)
     for param in model.backbone.features[:5].parameters():
         param.requires_grad = False
 
@@ -275,7 +370,8 @@ def train_expression_classifier():
         {"params": model.backbone.classifier.parameters(), "lr": 3e-4}
     ])
     criterion = nn.CrossEntropyLoss()
-    return train_model(model, optimizer, criterion, train_loader, val_loader, "expression_efficient_net", num_epochs=20)
+    return train_model(model, optimizer, criterion, train_loader, val_loader, "expression", num_epochs=20)
+    # return train_model(model, optimizer, criterion, train_loader, val_loader, "expression_efficient_net", num_epochs=20)
 
 
 if __name__ == "__main__":
@@ -289,8 +385,8 @@ if __name__ == "__main__":
     # Uncomment the models you want to train:
     # train_face_binary()
     # train_age_classifier()
-    train_gender_classifier()
-    # train_expression_classifier()
+    # train_gender_classifier()
+    train_expression_classifier()
     
     print("\n" + "="*50)
     print("All training complete!")

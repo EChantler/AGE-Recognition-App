@@ -7,6 +7,96 @@ import mediapipe as mp
 from sklearn.model_selection import train_test_split
 from pathlib import Path
 from typing import Optional, Any
+from collections import defaultdict
+
+
+def count_images_by_class(root_dir, split_name=None):
+    """
+    Count images in a directory structure organized by class.
+    
+    Args:
+        root_dir: Root directory containing class subdirectories
+        split_name: Optional split name (train/test) to navigate to
+        
+    Returns:
+        Dictionary mapping class names to image counts
+    """
+    if split_name:
+        root_dir = os.path.join(root_dir, split_name)
+    
+    if not os.path.exists(root_dir):
+        return {}
+    
+    class_counts = defaultdict(int)
+    valid_exts = (".jpg", ".jpeg", ".png", ".bmp")
+    
+    class_names = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
+    
+    for class_name in class_names:
+        class_dir = os.path.join(root_dir, class_name)
+        images = [f for f in os.listdir(class_dir) if f.lower().endswith(valid_exts)]
+        class_counts[class_name] = len(images)
+    
+    return dict(class_counts)
+
+
+def print_comparison_table(dataset_name, before_train, before_test, after_train, after_test):
+    """
+    Print a comparison table showing before/after preprocessing counts.
+    
+    Args:
+        dataset_name: Name of the dataset
+        before_train: Dict of class -> count before preprocessing (train)
+        before_test: Dict of class -> count before preprocessing (test)
+        after_train: Dict of class -> count after preprocessing (train)
+        after_test: Dict of class -> count after preprocessing (test)
+    """
+    print("\n" + "="*100)
+    print(f"PREPROCESSING COMPARISON: {dataset_name.upper()}")
+    print("="*100)
+    
+    # Get all classes from both before and after
+    all_classes = sorted(set(list(before_train.keys()) + list(after_train.keys()) + 
+                            list(before_test.keys()) + list(after_test.keys())))
+    
+    # Print header
+    print(f"{'Class':<20} {'TRAIN Before':<15} {'TRAIN After':<15} {'Change':<15} {'TEST Before':<15} {'TEST After':<15} {'Change':<15}")
+    print("-" * 100)
+    
+    total_before_train = 0
+    total_after_train = 0
+    total_before_test = 0
+    total_after_test = 0
+    
+    # Print each class
+    for class_name in all_classes:
+        before_t = before_train.get(class_name, 0)
+        after_t = after_train.get(class_name, 0)
+        before_test_c = before_test.get(class_name, 0)
+        after_test_c = after_test.get(class_name, 0)
+        
+        change_train = after_t - before_t
+        change_test = after_test_c - before_test_c
+        
+        change_train_str = f"{change_train:+d}" if change_train != 0 else "0"
+        change_test_str = f"{change_test:+d}" if change_test != 0 else "0"
+        
+        print(f"{class_name:<20} {before_t:<15} {after_t:<15} {change_train_str:<15} {before_test_c:<15} {after_test_c:<15} {change_test_str:<15}")
+        
+        total_before_train += before_t
+        total_after_train += after_t
+        total_before_test += before_test_c
+        total_after_test += after_test_c
+    
+    # Print total row
+    print("-" * 100)
+    total_change_train = total_after_train - total_before_train
+    total_change_test = total_after_test - total_before_test
+    total_change_train_str = f"{total_change_train:+d}" if total_change_train != 0 else "0"
+    total_change_test_str = f"{total_change_test:+d}" if total_change_test != 0 else "0"
+    
+    print(f"{'TOTAL':<20} {total_before_train:<15} {total_after_train:<15} {total_change_train_str:<15} {total_before_test:<15} {total_after_test:<15} {total_change_test_str:<15}")
+    print("="*100)
 
 
 class FaceExtractor:
@@ -390,6 +480,151 @@ def preprocess_classification_dataset_faces(
         extractor.close()
 
 
+def organize_flat_dataset_with_split(
+    input_root: str,
+    output_root: str,
+    train_ratio: float = 0.8,
+    target_size: int = 224,
+    extract_faces: bool = True,
+    valid_exts = (".jpg", ".jpeg", ".png", ".bmp")
+):
+    """
+    Organize a flat dataset with class directories (no train/test split) into train/test splits.
+    Applies face extraction to match inference preprocessing.
+    
+    Input structure:
+      input_root/<class>/*.jpg
+    
+    Output structure:
+      output_root/train/<class>/*.jpg
+      output_root/test/<class>/*.jpg
+    
+    Args:
+        input_root: Source dataset root with class subdirectories
+        output_root: Destination root for organized dataset
+        train_ratio: Ratio for train/test split (default 0.8 for 80/20 split)
+        target_size: Output image size (square)
+        extract_faces: Whether to extract face regions using MediaPipe (default True)
+        valid_exts: Accepted image extensions
+    """
+    print(f"\nOrganizing flat dataset with {int(train_ratio*100)}/{int((1-train_ratio)*100)} train/test split...")
+    print(f"Input:  {input_root}")
+    print(f"Output: {output_root}")
+    
+    if not os.path.isdir(input_root):
+        raise FileNotFoundError(f"Input root not found: {input_root}")
+    
+    os.makedirs(output_root, exist_ok=True)
+    
+    # Get class directories
+    class_names = [d for d in os.listdir(input_root) if os.path.isdir(os.path.join(input_root, d))]
+    if not class_names:
+        raise FileNotFoundError(f"No class directories found in {input_root}")
+    
+    print(f"Found {len(class_names)} classes: {', '.join(sorted(class_names))}")
+    
+    # Create output train/test directories
+    train_output_dir = os.path.join(output_root, 'train')
+    test_output_dir = os.path.join(output_root, 'test')
+    os.makedirs(train_output_dir, exist_ok=True)
+    os.makedirs(test_output_dir, exist_ok=True)
+    
+    for class_name in class_names:
+        os.makedirs(os.path.join(train_output_dir, class_name), exist_ok=True)
+        os.makedirs(os.path.join(test_output_dir, class_name), exist_ok=True)
+    
+    # Initialize face extractor if needed
+    extractor = None
+    if extract_faces:
+        print("Initializing MediaPipe face detector...")
+        extractor = FaceExtractor()
+    
+    total_processed = 0
+    total_copied = 0
+    total_skipped = 0
+    
+    try:
+        for class_name in sorted(class_names):
+            class_input_dir = os.path.join(input_root, class_name)
+            images = [f for f in os.listdir(class_input_dir) if f.lower().endswith(valid_exts)]
+            
+            print(f"\nProcessing class '{class_name}': {len(images)} images")
+            
+            # Split images into train/test
+            import random
+            random.seed(42)
+            random.shuffle(images)
+            split_idx = int(len(images) * train_ratio)
+            train_images = images[:split_idx]
+            test_images = images[split_idx:]
+            
+            print(f"  Train: {len(train_images)}, Test: {len(test_images)}")
+            
+            # Process train images
+            copied = 0
+            skipped = 0
+            for i, fname in enumerate(train_images):
+                src = os.path.join(class_input_dir, fname)
+                dst = os.path.join(train_output_dir, class_name, fname)
+                
+                if extract_faces:
+                    face_image = extractor.detect_and_extract_largest_face(src, target_size=target_size)
+                    if face_image is None:
+                        skipped += 1
+                        continue
+                    face_bgr = cv2.cvtColor(face_image, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(dst, face_bgr)
+                else:
+                    shutil.copy2(src, dst)
+                
+                copied += 1
+                
+                if (i + 1) % 1000 == 0:
+                    print(f"    Processed {i + 1}/{len(train_images)} train images...")
+            
+            print(f"  Train saved: {copied}, skipped: {skipped}")
+            total_copied += copied
+            total_skipped += skipped
+            total_processed += len(train_images)
+            
+            # Process test images
+            copied = 0
+            skipped = 0
+            for i, fname in enumerate(test_images):
+                src = os.path.join(class_input_dir, fname)
+                dst = os.path.join(test_output_dir, class_name, fname)
+                
+                if extract_faces:
+                    face_image = extractor.detect_and_extract_largest_face(src, target_size=target_size)
+                    if face_image is None:
+                        skipped += 1
+                        continue
+                    face_bgr = cv2.cvtColor(face_image, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(dst, face_bgr)
+                else:
+                    shutil.copy2(src, dst)
+                
+                copied += 1
+                
+                if (i + 1) % 1000 == 0:
+                    print(f"    Processed {i + 1}/{len(test_images)} test images...")
+            
+            print(f"  Test saved: {copied}, skipped: {skipped}")
+            total_copied += copied
+            total_skipped += skipped
+            total_processed += len(test_images)
+        
+        print("\n" + "-"*60)
+        print("SPLIT PREPROCESSING SUMMARY")
+        print("-"*60)
+        print(f"Total images scanned: {total_processed}")
+        print(f"Saved (face-extracted): {total_copied}")
+        print(f"Skipped (no-face): {total_skipped}")
+    finally:
+        if extractor:
+            extractor.close()
+
+
 if __name__ == "__main__":
     base_dir = os.path.dirname(__file__)
 
@@ -402,20 +637,78 @@ if __name__ == "__main__":
     print(f"Output path: {ages2_output_path}")
     print("Face extraction: ENABLED (matching inference preprocessing)")
     print()
+    
+    # Collect before counts for ages2
+    images_dir = os.path.join(raw_data_path, 'Train')
+    csv_file = os.path.join(raw_data_path, 'train.csv')
+    if os.path.exists(csv_file):
+        df = pd.read_csv(csv_file)
+        from sklearn.model_selection import train_test_split
+        train_df, test_df = train_test_split(df, test_size=0.2, stratify=df['Class'], random_state=42)
+        ages2_before_train = dict(train_df['Class'].value_counts())
+        ages2_before_test = dict(test_df['Class'].value_counts())
+    else:
+        ages2_before_train = {}
+        ages2_before_test = {}
+    
     organize_ages2_dataset(raw_data_path, ages2_output_path, train_ratio=0.8, extract_faces=True)
+    
+    # Collect after counts for ages2
+    ages2_after_train = count_images_by_class(ages2_output_path, 'train')
+    ages2_after_test = count_images_by_class(ages2_output_path, 'test')
+    
+    # Print ages2 comparison table
+    print_comparison_table("Ages2", ages2_before_train, ages2_before_test, ages2_after_train, ages2_after_test)
 
     # 2) Expressions dataset face preprocessing (train/test/<class>)
-    expressions_input = os.path.join(base_dir, 'data', 'expressions')
-    expressions_output = os.path.join(base_dir, 'data', 'expressions_preprocessed')
+    expressions_input = os.path.join(base_dir, 'data', 'expressions2')
+    expressions_output = os.path.join(base_dir, 'data', 'expressions2_preprocessed')
     print("\nProcessing expressions dataset with face extraction...")
+    
+    # Collect before counts for expressions
+    expressions_before_train = count_images_by_class(expressions_input, 'train')
+    expressions_before_test = count_images_by_class(expressions_input, 'test')
+    
     preprocess_classification_dataset_faces(expressions_input, expressions_output, target_size=224)
+    
+    # Collect after counts for expressions
+    expressions_after_train = count_images_by_class(expressions_output, 'train')
+    expressions_after_test = count_images_by_class(expressions_output, 'test')
+    
+    # Print expressions comparison table
+    print_comparison_table("Expressions", expressions_before_train, expressions_before_test, expressions_after_train, expressions_after_test)
 
-    # 3) Gender dataset face preprocessing (train/test/<class>)
-    gender_input = os.path.join(base_dir, 'data', 'gender')
-    gender_output = os.path.join(base_dir, 'data', 'gender_preprocessed')
-    print("\nProcessing gender dataset with face extraction...")
-    preprocess_classification_dataset_faces(gender_input, gender_output, target_size=224)
+    # 3) Gender2 dataset - organize with 80/20 train/test split and face extraction
+    gender_input = os.path.join(base_dir, 'data', 'gender2')
+    gender_output = os.path.join(base_dir, 'data', 'gender2_preprocessed')
+    print("\nProcessing gender2 dataset with 80/20 split and face extraction...")
+    
+    # Collect before counts for gender (flat structure)
+    gender_before_train = {}
+    gender_before_test = {}
+    class_names = [d for d in os.listdir(gender_input) if os.path.isdir(os.path.join(gender_input, d))]
+    for class_name in class_names:
+        class_dir = os.path.join(gender_input, class_name)
+        images = [f for f in os.listdir(class_dir) if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp"))]
+        gender_before_train[class_name] = len(images)  # Will be split in processing
+    
+    organize_flat_dataset_with_split(gender_input, gender_output, train_ratio=0.8, extract_faces=True)
+    
+    # Collect after counts for gender
+    gender_after_train = count_images_by_class(gender_output, 'train')
+    gender_after_test = count_images_by_class(gender_output, 'test')
+    
+    # For before counts with split applied (approximate)
+    gender_before_train_split = {}
+    gender_before_test_split = {}
+    for class_name in class_names:
+        total = gender_before_train.get(class_name, 0)
+        gender_before_train_split[class_name] = int(total * 0.8)
+        gender_before_test_split[class_name] = int(total * 0.2)
+    
+    # Print gender comparison table
+    print_comparison_table("Gender2", gender_before_train_split, gender_before_test_split, gender_after_train, gender_after_test)
 
-    print("\n" + "="*60)
+    print("\n" + "="*100)
     print("All dataset preprocessing completed successfully!")
-    print("="*60)
+    print("="*100)
