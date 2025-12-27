@@ -63,6 +63,7 @@ const App: React.FC = () => {
   const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [captureCounter, setCaptureCounter] = useState<number>(0);
   const currentStreamRef = useRef<MediaStream | null>(null);
 
   const updateLoadState = useCallback((key: ModelKey, partial: Partial<ModelLoadState>) => {
@@ -281,6 +282,9 @@ const App: React.FC = () => {
       }
       console.log("Face detected and extracted using MediaPipe.");
 
+      // Increment capture counter
+      setCaptureCounter((prev) => prev + 1);
+
       // Preprocess to NCHW float32 [1,3,224,224], normalized like in Python
       const inputData = preprocessImageData(imageData);
       renderPreprocessedToCanvas(inputData, size);
@@ -380,7 +384,7 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `preprocessed-face-${new Date().getTime()}.png`;
+      link.download = `preprocessed-face-${captureCounter}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
